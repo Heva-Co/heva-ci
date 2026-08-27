@@ -1,2 +1,2 @@
 # heva-ci
-Centralized GitHub Actions for heva deploy workflows
+From heva for the people. Composited GitHub actions to make life easier
