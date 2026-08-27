@@ -1,0 +1,135 @@
+name: Build & Push Docker Image
+description: >-
+  Build one or more Docker images and push them to
+  Google Artifact Registry.
+
+inputs:
+  image_name:
+    description: >-
+      Full image path without tag
+      (e.g. us-central1-docker.pkg.dev/my-project/repo/my-image)
+    required: true
+  tag:
+    description: Image tag (defaults to the git commit SHA)
+    required: false
+    default: ${{ github.sha }}
+  dockerfile:
+    description: Path to the Dockerfile
+    required: false
+    default: Dockerfile
+  build_args:
+    description: >-
+      Docker build-time arguments, one KEY=VALUE per line.
+      Empty lines are ignored.
+    required: false
+    default: ""
+  target:
+    description: Docker build target stage (omit to build the default stage)
+    required: false
+    default: ""
+  cache_from:
+    description: >-
+      Image reference to use as a build cache source.
+      A pull failure is tolerated so first builds still succeed.
+    required: false
+    default: ""
+  extra_images:
+    description: >-
+      Additional images to build from the same Dockerfile, as a
+      multiline list of TARGET=SUFFIX pairs (one per line).
+      Each line produces <image_name>-<SUFFIX>:<tag> built with
+      --target <TARGET>.  Example:
+        migrator=migrator
+    required: false
+    default: ""
+  push_regions:
+    description: >-
+      JSON array of extra regions to tag-and-push to, for
+      multi-region production deploys (e.g. '["us-east1"]').
+    required: false
+    default: "[]"
+
+outputs:
+  image_tag:
+    description: Primary image reference that was pushed (image:tag)
+    value: ${{ steps.primary.outputs.image_tag }}
+  extra_tags:
+    description: >-
+      Newline-separated list of extra image:tag references that
+      were pushed (one per extra_images line, in order).
+    value: ${{ steps.extras.outputs.tags }}
+
+runs:
+  using: composite
+  steps:
+    # ── primary image ────────────────────────────────────────────
+    - name: Build primary image
+      id: primary
+      shell: bash
+      run: |
+        IMAGE="${{ inputs.image_name }}:${{ inputs.tag }}"
+        echo "image_tag=$IMAGE" >> "$GITHUB_OUTPUT"
+
+        ARGS=()
+        if [[ -n "${{ inputs.target }}" ]]; then
+          ARGS+=(--target "${{ inputs.target }}")
+        fi
+        if [[ -n "${{ inputs.cache_from }}" ]]; then
+          docker pull "${{ inputs.cache_from }}" 2>/dev/null || true
+          ARGS+=(--cache-from "${{ inputs.cache_from }}")
+        fi
+        while IFS= read -r line; do
+          [[ -z "$line" ]] && continue
+          ARGS+=(--build-arg "$line")
+        done <<< "${{ inputs.build_args }}"
+
+        docker build "${ARGS[@]}" -f "${{ inputs.dockerfile }}" -t "$IMAGE" .
+
+    - name: Push primary image
+      shell: bash
+      run: docker push "${{ steps.primary.outputs.image_tag }}"
+
+    # ── extra images (e.g. migrator) ─────────────────────────────
+    - name: Build and push extra images
+      id: extras
+      shell: bash
+      run: |
+        TAGS=""
+        while IFS= read -r line; do
+          [[ -z "$line" ]] && continue
+          TARGET="${line%%=*}"
+          SUFFIX="${line#*=}"
+          EXTRA_IMAGE="${{ inputs.image_name }}-${SUFFIX}:${{ inputs.tag }}"
+
+          ARGS=(--target "$TARGET")
+          while IFS= read -r ba; do
+            [[ -z "$ba" ]] && continue
+            ARGS+=(--build-arg "$ba")
+          done <<< "${{ inputs.build_args }}"
+
+          docker build "${ARGS[@]}" -f "${{ inputs.dockerfile }}" -t "$EXTRA_IMAGE" .
+          docker push "$EXTRA_IMAGE"
+          TAGS="${TAGS}${EXTRA_IMAGE}"$'\n'
+        done <<< "${{ inputs.extra_images }}"
+
+        # Trim trailing newline
+        TAGS="${TAGS%$'\n'}"
+        {
+          echo "tags<<EOF"
+          echo "$TAGS"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    # ── multi-region replication ─────────────────────────────────
+    - name: Replicate to additional regions
+      if: inputs.push_regions != '[]'
+      shell: bash
+      run: |
+        for region in $(echo '${{ inputs.push_regions }}' | jq -r '.[]'); do
+          for img in "${{ steps.primary.outputs.image_tag }}" ${{ steps.extras.outputs.tags }}; do
+            [[ -z "$img" ]] && continue
+            target_img=$(echo "$img" | sed "s|^[^-]*-docker|${region}-docker|")
+            docker tag "$img" "$target_img"
+            docker push "$target_img"
+          done
+        done

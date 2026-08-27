@@ -1,0 +1,108 @@
+name: Deploy Cloud Run Job
+description: >-
+  Generate a Cloud Run job manifest using
+  heva-cloudrun-manifest-action, apply it with
+  `gcloud run jobs replace`, and optionally execute the job.
+
+inputs:
+  name:
+    description: Cloud Run job name
+    required: true
+  region:
+    description: GCP region
+    required: true
+  image:
+    description: "Full image:tag to deploy"
+    required: true
+  service_account:
+    description: Runtime service account email
+    required: true
+  environment:
+    description: "Environment label (dev, stg, prd)"
+    required: true
+  max_retries:
+    required: false
+    default: "0"
+  timeout:
+    description: Task timeout in seconds
+    required: false
+    default: "600"
+  cpu:
+    required: false
+    default: "1000m"
+  memory:
+    required: false
+    default: 512Mi
+  vpc_network:
+    required: false
+    default: ""
+  vpc_subnetwork:
+    required: false
+    default: ""
+  vpc_egress:
+    required: false
+    default: ""
+  cloudsql_instances:
+    required: false
+    default: ""
+  env_plain:
+    description: "Plain env vars, one KEY=VALUE per line"
+    required: false
+    default: ""
+  env_secrets:
+    description: "Secret env vars, one KEY=secret-name per line"
+    required: false
+    default: ""
+  execute:
+    description: Whether to execute the job after deploying
+    required: false
+    default: "false"
+
+outputs:
+  manifest_path:
+    description: Path to the rendered manifest file
+    value: ${{ steps.manifest.outputs.manifest-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate job manifest
+      id: manifest
+      uses: Heva-Co/heva-cloudrun-manifest-action@v0.1.0
+      with:
+        kind: job
+        name: ${{ inputs.name }}
+        region: ${{ inputs.region }}
+        image: ${{ inputs.image }}
+        service-account: ${{ inputs.service_account }}
+        environment: ${{ inputs.environment }}
+        max-retries: ${{ inputs.max_retries }}
+        timeout: ${{ inputs.timeout }}
+        cpu: ${{ inputs.cpu }}
+        memory: ${{ inputs.memory }}
+        vpc-network: ${{ inputs.vpc_network }}
+        vpc-subnetwork: ${{ inputs.vpc_subnetwork }}
+        vpc-egress: ${{ inputs.vpc_egress }}
+        cloudsql-instances: ${{ inputs.cloudsql_instances }}
+        env-plain: ${{ inputs.env_plain }}
+        env-secrets: ${{ inputs.env_secrets }}
+
+    - name: Print rendered manifest
+      shell: bash
+      run: |
+        echo "--- Cloud Run job manifest ---"
+        cat "${{ steps.manifest.outputs.manifest-path }}"
+
+    - name: Publish job definition
+      shell: bash
+      run: |
+        gcloud run jobs replace \
+          "${{ steps.manifest.outputs.manifest-path }}" \
+          --region "${{ inputs.region }}"
+
+    - name: Execute job
+      if: inputs.execute == 'true'
+      shell: bash
+      run: |
+        gcloud run jobs execute "${{ inputs.name }}" \
+          --region "${{ inputs.region }}" --wait --quiet

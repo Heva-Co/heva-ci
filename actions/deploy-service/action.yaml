@@ -1,0 +1,117 @@
+name: Deploy Cloud Run Service
+description: >-
+  Generate a Cloud Run service manifest using
+  heva-cloudrun-manifest-action, then apply it with
+  `gcloud run services replace`.
+
+inputs:
+  name:
+    description: Cloud Run service name
+    required: true
+  region:
+    description: GCP region to deploy to
+    required: true
+  image:
+    description: "Full image:tag to deploy"
+    required: true
+  service_account:
+    description: Runtime service account email
+    required: true
+  environment:
+    description: "Environment label (dev, stg, prd)"
+    required: true
+  traffic:
+    description: "Traffic policy: 'latest' or 'hold=<revision>'"
+    required: false
+    default: latest
+  port:
+    required: false
+    default: "8000"
+  cpu:
+    required: false
+    default: "1000m"
+  memory:
+    required: false
+    default: 512Mi
+  min_instances:
+    required: false
+    default: "1"
+  max_instances:
+    required: false
+    default: "10"
+  container_concurrency:
+    required: false
+    default: ""
+  timeout:
+    required: false
+    default: ""
+  invoker_iam_disabled:
+    required: false
+    default: "false"
+  vpc_network:
+    required: false
+    default: ""
+  vpc_subnetwork:
+    required: false
+    default: ""
+  vpc_egress:
+    required: false
+    default: ""
+  cloudsql_instances:
+    required: false
+    default: ""
+  env_plain:
+    description: "Plain env vars, one KEY=VALUE per line"
+    required: false
+    default: ""
+  env_secrets:
+    description: "Secret env vars, one KEY=secret-name per line"
+    required: false
+    default: ""
+
+outputs:
+  manifest_path:
+    description: Path to the rendered manifest file
+    value: ${{ steps.manifest.outputs.manifest-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate service manifest
+      id: manifest
+      uses: Heva-Co/heva-cloudrun-manifest-action@v0.1.0
+      with:
+        kind: service
+        name: ${{ inputs.name }}
+        region: ${{ inputs.region }}
+        image: ${{ inputs.image }}
+        service-account: ${{ inputs.service_account }}
+        environment: ${{ inputs.environment }}
+        traffic: ${{ inputs.traffic }}
+        port: ${{ inputs.port }}
+        cpu: ${{ inputs.cpu }}
+        memory: ${{ inputs.memory }}
+        min-instances: ${{ inputs.min_instances }}
+        max-instances: ${{ inputs.max_instances }}
+        container-concurrency: ${{ inputs.container_concurrency }}
+        timeout: ${{ inputs.timeout }}
+        invoker-iam-disabled: ${{ inputs.invoker_iam_disabled }}
+        vpc-network: ${{ inputs.vpc_network }}
+        vpc-subnetwork: ${{ inputs.vpc_subnetwork }}
+        vpc-egress: ${{ inputs.vpc_egress }}
+        cloudsql-instances: ${{ inputs.cloudsql_instances }}
+        env-plain: ${{ inputs.env_plain }}
+        env-secrets: ${{ inputs.env_secrets }}
+
+    - name: Print rendered manifest
+      shell: bash
+      run: |
+        echo "--- Cloud Run service manifest ---"
+        cat "${{ steps.manifest.outputs.manifest-path }}"
+
+    - name: Deploy to Cloud Run
+      shell: bash
+      run: |
+        gcloud run services replace \
+          "${{ steps.manifest.outputs.manifest-path }}" \
+          --region "${{ inputs.region }}"
