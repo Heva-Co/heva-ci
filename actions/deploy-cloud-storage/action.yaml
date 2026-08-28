@@ -1,0 +1,51 @@
+name: Deploy to Cloud Storage
+description: >-
+  Authenticate to GCP, strip source maps from the build output,
+  and upload static assets to a Cloud Storage bucket.
+
+inputs:
+  wif_provider:
+    description: Workload Identity Federation provider resource name
+    required: true
+  service_account:
+    description: GCP service account email
+    required: true
+  project_id:
+    description: GCP project ID
+    required: false
+    default: ""
+  bucket:
+    description: Cloud Storage bucket name (e.g. my-frontend-bucket)
+    required: true
+  dist_path:
+    description: Path to the build output directory
+    required: false
+    default: dist
+  strip_source_maps:
+    description: Whether to delete .map files before uploading
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.wif_provider }}
+        service_account: ${{ inputs.service_account }}
+        project_id: ${{ inputs.project_id || '' }}
+
+    - name: Remove source maps
+      if: inputs.strip_source_maps == 'true'
+      shell: bash
+      run: |
+        count=$(find "${{ inputs.dist_path }}" -name "*.map" -delete -print | wc -l)
+        echo "Removed $count source map(s)"
+
+    - name: Upload to Cloud Storage
+      uses: google-github-actions/upload-cloud-storage@v2
+      with:
+        path: ${{ inputs.dist_path }}
+        destination: ${{ inputs.bucket }}
+        parent: false

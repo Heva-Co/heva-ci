@@ -1,0 +1,47 @@
+name: Node.js Setup
+description: >-
+  Set up pnpm, Node.js, and install dependencies with a frozen
+  lockfile.  Supports GitHub Packages for @heva-co scoped packages.
+
+inputs:
+  node_version:
+    description: Node.js version (ignored when node_version_file is set)
+    required: false
+    default: "22"
+  node_version_file:
+    description: File to read the Node version from (e.g. .nvmrc)
+    required: false
+    default: ""
+  registry_url:
+    description: npm registry URL for private packages
+    required: false
+    default: https://npm.pkg.github.com
+  scope:
+    description: npm scope for private packages (e.g. @heva-co)
+    required: false
+    default: "@heva-co"
+  node_auth_token:
+    description: Token for the private registry (typically secrets.GITHUB_TOKEN)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version_file && ' ' || inputs.node_version }}
+        node-version-file: ${{ inputs.node_version_file }}
+        cache: pnpm
+        registry-url: ${{ inputs.registry_url }}
+        scope: ${{ inputs.scope }}
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.node_auth_token }}
