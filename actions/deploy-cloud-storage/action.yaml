@@ -49,3 +49,10 @@ runs:
         path: ${{ inputs.dist_path }}
         destination: ${{ inputs.bucket }}
         parent: false
+
+    - name: Set no-cache on index.html
+      shell: bash
+      run: |
+        gcloud storage objects update \
+          "gs://${{ inputs.bucket }}/index.html" \
+          --cache-control="no-cache, no-store, must-revalidate"
