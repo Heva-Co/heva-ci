@@ -57,6 +57,10 @@ inputs:
   vpc_egress:
     required: false
     default: ""
+  vpc_tags:
+    description: "Network tags, one per line"
+    required: false
+    default: ""
   cloudsql_instances:
     required: false
     default: ""
@@ -66,6 +70,74 @@ inputs:
     default: ""
   env_secrets:
     description: "Secret env vars, one KEY=secret-name per line"
+    required: false
+    default: ""
+  secret_volumes:
+    description: "name:/mount/path=secret-id[:version] per line"
+    required: false
+    default: ""
+  command:
+    description: "Entrypoint, one element per line"
+    required: false
+    default: ""
+  args:
+    description: "Arguments, one per line"
+    required: false
+    default: ""
+  ingress:
+    description: "all | internal | internal-and-cloud-load-balancing"
+    required: false
+    default: ""
+  execution_environment:
+    description: "gen1 | gen2"
+    required: false
+    default: ""
+  launch_stage:
+    description: "e.g. BETA"
+    required: false
+    default: ""
+  sandbox:
+    description: "gvisor"
+    required: false
+    default: ""
+  cpu_throttling:
+    description: "true | false"
+    required: false
+    default: ""
+  session_affinity:
+    description: "true | false"
+    required: false
+    default: ""
+  custom_audiences:
+    description: "One audience per line"
+    required: false
+    default: ""
+  startup_probe:
+    description: "path=/health,port=8080,initial-delay=10,timeout=10,period=10,failure-threshold=240"
+    required: false
+    default: ""
+  liveness_probe:
+    description: "Same syntax as startup_probe"
+    required: false
+    default: ""
+  readiness_probe:
+    description: "Same syntax as startup_probe"
+    required: false
+    default: ""
+  labels:
+    description: "k=v per line"
+    required: false
+    default: ""
+  annotations:
+    description: "k=v per line, service-level"
+    required: false
+    default: ""
+  template_annotations:
+    description: "k=v per line, revision-level. Overrides derived annotations."
+    required: false
+    default: ""
+  overlay:
+    description: "Raw YAML, deep-merged last. Escape hatch for anything unmodelled."
     required: false
     default: ""
 
@@ -99,9 +171,27 @@ runs:
         vpc-network: ${{ inputs.vpc_network }}
         vpc-subnetwork: ${{ inputs.vpc_subnetwork }}
         vpc-egress: ${{ inputs.vpc_egress }}
+        vpc-tags: ${{ inputs.vpc_tags }}
         cloudsql-instances: ${{ inputs.cloudsql_instances }}
         env-plain: ${{ inputs.env_plain }}
         env-secrets: ${{ inputs.env_secrets }}
+        secret-volumes: ${{ inputs.secret_volumes }}
+        command: ${{ inputs.command }}
+        args: ${{ inputs.args }}
+        ingress: ${{ inputs.ingress }}
+        execution-environment: ${{ inputs.execution_environment }}
+        launch-stage: ${{ inputs.launch_stage }}
+        sandbox: ${{ inputs.sandbox }}
+        cpu-throttling: ${{ inputs.cpu_throttling }}
+        session-affinity: ${{ inputs.session_affinity }}
+        custom-audiences: ${{ inputs.custom_audiences }}
+        startup-probe: ${{ inputs.startup_probe }}
+        liveness-probe: ${{ inputs.liveness_probe }}
+        readiness-probe: ${{ inputs.readiness_probe }}
+        labels: ${{ inputs.labels }}
+        annotations: ${{ inputs.annotations }}
+        template-annotations: ${{ inputs.template_annotations }}
+        overlay: ${{ inputs.overlay }}
 
     - name: Print rendered manifest
       shell: bash

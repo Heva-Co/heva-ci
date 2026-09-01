@@ -42,6 +42,10 @@ inputs:
   vpc_egress:
     required: false
     default: ""
+  vpc_tags:
+    description: "Network tags, one per line"
+    required: false
+    default: ""
   cloudsql_instances:
     required: false
     default: ""
@@ -51,6 +55,42 @@ inputs:
     default: ""
   env_secrets:
     description: "Secret env vars, one KEY=secret-name per line"
+    required: false
+    default: ""
+  secret_volumes:
+    description: "name:/mount/path=secret-id[:version] per line"
+    required: false
+    default: ""
+  command:
+    description: "Entrypoint, one element per line"
+    required: false
+    default: ""
+  args:
+    description: "Arguments, one per line"
+    required: false
+    default: ""
+  execution_environment:
+    description: "gen1 | gen2"
+    required: false
+    default: ""
+  parallelism:
+    description: "Job parallelism"
+    required: false
+    default: ""
+  task_count:
+    description: "Job taskCount"
+    required: false
+    default: ""
+  labels:
+    description: "k=v per line"
+    required: false
+    default: ""
+  template_annotations:
+    description: "k=v per line, task-level. Overrides derived annotations."
+    required: false
+    default: ""
+  overlay:
+    description: "Raw YAML, deep-merged last. Escape hatch for anything unmodelled."
     required: false
     default: ""
   execute:
@@ -83,9 +123,19 @@ runs:
         vpc-network: ${{ inputs.vpc_network }}
         vpc-subnetwork: ${{ inputs.vpc_subnetwork }}
         vpc-egress: ${{ inputs.vpc_egress }}
+        vpc-tags: ${{ inputs.vpc_tags }}
         cloudsql-instances: ${{ inputs.cloudsql_instances }}
         env-plain: ${{ inputs.env_plain }}
         env-secrets: ${{ inputs.env_secrets }}
+        secret-volumes: ${{ inputs.secret_volumes }}
+        command: ${{ inputs.command }}
+        args: ${{ inputs.args }}
+        execution-environment: ${{ inputs.execution_environment }}
+        parallelism: ${{ inputs.parallelism }}
+        task-count: ${{ inputs.task_count }}
+        labels: ${{ inputs.labels }}
+        template-annotations: ${{ inputs.template_annotations }}
+        overlay: ${{ inputs.overlay }}
 
     - name: Print rendered manifest
       shell: bash
