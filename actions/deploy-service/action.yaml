@@ -140,6 +140,14 @@ inputs:
     description: "Raw YAML, deep-merged last. Escape hatch for anything unmodelled."
     required: false
     default: ""
+  secret_scan:
+    description: "auto | warn | error | off"
+    required: false
+    default: "auto"
+  secret_scan_allow:
+    description: "Env var names to exempt from secret scanning, one per line"
+    required: false
+    default: ""
 
 outputs:
   manifest_path:
@@ -192,6 +200,8 @@ runs:
         annotations: ${{ inputs.annotations }}
         template-annotations: ${{ inputs.template_annotations }}
         overlay: ${{ inputs.overlay }}
+        secret-scan: ${{ inputs.secret_scan }}
+        secret-scan-allow: ${{ inputs.secret_scan_allow }}
 
     - name: Print rendered manifest
       shell: bash
