@@ -18,8 +18,11 @@ inputs:
     description: Runtime service account email
     required: true
   environment:
-    description: "Environment label (dev, stg, prd)"
-    required: true
+    description: >-
+      Environment label (dev, stg, prd). When omitted, no environment suffix
+      is enforced on the service name.
+    required: false
+    default: ""
   traffic:
     description: "Traffic policy: 'latest' or 'hold=<revision>'"
     required: false
