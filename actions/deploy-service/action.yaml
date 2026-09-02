@@ -154,7 +154,7 @@ runs:
   steps:
     - name: Generate service manifest
       id: manifest
-      uses: Heva-Co/heva-cloudrun-manifest-action@v0.1.0
+      uses: Heva-Co/heva-cloudrun-manifest-action@v0.2.1
       with:
         kind: service
         name: ${{ inputs.name }}
