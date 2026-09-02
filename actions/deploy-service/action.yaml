@@ -154,7 +154,7 @@ runs:
   steps:
     - name: Generate service manifest
       id: manifest
-      uses: Heva-Co/heva-cloudrun-manifest-action@v0.1.0
+      uses: Heva-Co/heva-cloudrun-manifest-action@v0.2.1
       with:
         kind: service
         name: ${{ inputs.name }}
@@ -168,7 +168,7 @@ runs:
         memory: ${{ inputs.memory }}
         min-instances: ${{ inputs.min_instances }}
         max-instances: ${{ inputs.max_instances }}
-        container-concurrency: ${{ inputs.container_concurrency }}
+        concurrency: ${{ inputs.container_concurrency }}
         timeout: ${{ inputs.timeout }}
         invoker-iam-disabled: ${{ inputs.invoker_iam_disabled }}
         vpc-network: ${{ inputs.vpc_network }}
