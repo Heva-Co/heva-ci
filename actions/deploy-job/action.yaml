@@ -98,6 +98,19 @@ inputs:
     required: false
     default: "false"
 
+  secret_scan:
+    description: "auto | warn | error | off. auto = error on prd, warn elsewhere."
+    required: false
+    default: "auto"
+  secret_scan_allow:
+    description: "Env var names to exempt from the secret scan, one per line. For genuinely public high-entropy values (an account SID, a public client id) that the entropy detector cannot tell from a credential."
+    required: false
+    default: ""
+  secret_scan_baseline:
+    description: "Path to a detect-secrets .secrets.baseline. Defaults to the manifest action's own default; the file only exists if the calling job checked out the repo."
+    required: false
+    default: ".secrets.baseline"
+
 outputs:
   manifest_path:
     description: Path to the rendered manifest file
@@ -127,6 +140,9 @@ runs:
         cloudsql-instances: ${{ inputs.cloudsql_instances }}
         env-plain: ${{ inputs.env_plain }}
         env-secrets: ${{ inputs.env_secrets }}
+        secret-scan: ${{ inputs.secret_scan }}
+        secret-scan-allow: ${{ inputs.secret_scan_allow }}
+        secret-scan-baseline: ${{ inputs.secret_scan_baseline }}
         secret-volumes: ${{ inputs.secret_volumes }}
         command: ${{ inputs.command }}
         args: ${{ inputs.args }}
