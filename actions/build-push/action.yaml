@@ -1,14 +1,41 @@
 name: Build & Push Docker Image
 description: >-
   Build one or more Docker images and push them to
-  Google Artifact Registry.
+  Google Artifact Registry, in one or more regions.
 
 inputs:
+  regions:
+    description: >-
+      Regions to push the image to, each to its own Artifact Registry.
+      Space-, comma- or newline-separated, or a JSON array
+      (e.g. "us-central1 us-east1"). With project_id, repository and
+      image, the action builds
+      <region>-docker.pkg.dev/<project_id>/<repository>/<image> for each
+      region and configures Docker for every registry host. The image is
+      built in the first region and tagged and pushed to the rest.
+      Use this or image_name, not both.
+    required: false
+    default: ""
+  project_id:
+    description: GCP project that owns the Artifact Registry repositories (with regions)
+    required: false
+    default: ""
+  repository:
+    description: Artifact Registry repository name, the same in every region (with regions)
+    required: false
+    default: ""
+  image:
+    description: Image name inside the repository, without tag (with regions)
+    required: false
+    default: ""
   image_name:
     description: >-
       Full image path without tag
-      (e.g. us-central1-docker.pkg.dev/my-project/repo/my-image)
-    required: true
+      (e.g. us-central1-docker.pkg.dev/my-project/repo/my-image).
+      A bare name resolves to Docker Hub; the action warns about it.
+      Alternative to regions; extra regions then come from push_regions.
+    required: false
+    default: ""
   tag:
     description: Image tag (defaults to the git commit SHA)
     required: false
@@ -37,15 +64,17 @@ inputs:
     description: >-
       Additional images to build from the same Dockerfile, as a
       multiline list of TARGET=SUFFIX pairs (one per line).
-      Each line produces <image_name>-<SUFFIX>:<tag> built with
-      --target <TARGET>.  Example:
+      Each line produces <image>-<SUFFIX>:<tag> built with
+      --target <TARGET> (pushed to every region in regions mode).  Example:
         migrator=migrator
     required: false
     default: ""
   push_regions:
     description: >-
-      JSON array of extra regions to tag-and-push to, for
-      multi-region production deploys (e.g. '["us-east1"]').
+      With image_name only: JSON array of extra regions to tag-and-push
+      to (e.g. '["us-east1"]'). Known issue: these pushes land back in
+      the primary region's registry, not the listed ones. Use regions
+      for real multi-region replication.
     required: false
     default: "[]"
 
@@ -53,21 +82,53 @@ outputs:
   image_tag:
     description: Primary image reference that was pushed (image:tag)
     value: ${{ steps.primary.outputs.image_tag }}
+  image_tags:
+    description: >-
+      JSON object mapping each region to the image:tag pushed to that
+      region's registry, e.g. in a deploy matrix:
+      fromJson(needs.build.outputs.image_tags)[matrix.region]
+    value: ${{ steps.replicate.outputs.image_tags }}
+  regions:
+    description: JSON array of every region pushed to, primary first (usable as a matrix)
+    value: ${{ steps.targets.outputs.regions }}
   extra_tags:
     description: >-
       Newline-separated list of extra image:tag references that
-      were pushed (one per extra_images line, in order).
+      were pushed to the primary region (one per extra_images line,
+      in order).
     value: ${{ steps.extras.outputs.tags }}
 
 runs:
   using: composite
   steps:
+    # ── targets ──────────────────────────────────────────────────
+    - name: Resolve image path and regions
+      id: targets
+      shell: bash
+      env:
+        INPUT_REGIONS: ${{ inputs.regions }}
+        INPUT_PROJECT_ID: ${{ inputs.project_id }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+        INPUT_PUSH_REGIONS: ${{ inputs.push_regions }}
+      run: bash "${{ github.action_path }}/resolve-targets.sh"
+
+    # Every region has its own registry host, and the credential helper only
+    # answers for hosts it was configured for. Configuring them all here means
+    # replication does not depend on what gcp-auth was told. image_name
+    # callers keep relying on gcp-auth, as before.
+    - name: Configure Docker for each region
+      if: steps.targets.outputs.mode == 'regions'
+      shell: bash
+      run: gcloud auth configure-docker "${{ steps.targets.outputs.hosts }}" --quiet
+
     # ── primary image ────────────────────────────────────────────
     - name: Build primary image
       id: primary
       shell: bash
       run: |
-        IMAGE="${{ inputs.image_name }}:${{ inputs.tag }}"
+        IMAGE="${{ steps.targets.outputs.primary_image }}:${{ inputs.tag }}"
         echo "image_tag=$IMAGE" >> "$GITHUB_OUTPUT"
 
         ARGS=()
@@ -99,7 +160,7 @@ runs:
           [[ -z "$line" ]] && continue
           TARGET="${line%%=*}"
           SUFFIX="${line#*=}"
-          EXTRA_IMAGE="${{ inputs.image_name }}-${SUFFIX}:${{ inputs.tag }}"
+          EXTRA_IMAGE="${{ steps.targets.outputs.primary_image }}-${SUFFIX}:${{ inputs.tag }}"
 
           ARGS=(--target "$TARGET")
           while IFS= read -r ba; do
@@ -121,8 +182,14 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     # ── multi-region replication ─────────────────────────────────
+    # image_name + push_regions: kept exactly as it was, so existing callers
+    # see no change. Known issue: `s|^[^-]*-docker|...|` stops at the first
+    # dash of the region, never matches "us-central1-docker", and pushes
+    # every "replica" back to the primary region. Fixing it in place would
+    # start pushing to registries those callers have never pushed to, so the
+    # fix lives in regions mode below; migrate to it to replicate for real.
     - name: Replicate to additional regions
-      if: inputs.push_regions != '[]'
+      if: steps.targets.outputs.mode == 'image_name' && inputs.push_regions != '[]'
       shell: bash
       run: |
         for region in $(echo '${{ inputs.push_regions }}' | jq -r '.[]'); do
@@ -133,3 +200,34 @@ runs:
             docker push "$target_img"
           done
         done
+
+    # regions: retags each image by swapping the whole registry host.
+    - name: Replicate to every region
+      id: replicate
+      if: steps.targets.outputs.mode == 'regions'
+      shell: bash
+      env:
+        REGIONS: ${{ steps.targets.outputs.regions }}
+        PRIMARY_REGION: ${{ steps.targets.outputs.primary_region }}
+        PRIMARY_TAG: ${{ steps.primary.outputs.image_tag }}
+        EXTRA_TAGS: ${{ steps.extras.outputs.tags }}
+      run: |
+        set -euo pipefail
+        from="${PRIMARY_REGION}-docker.pkg.dev/"
+        image_tags='{}'
+
+        while IFS= read -r region; do
+          to="${region}-docker.pkg.dev/"
+          target_primary="${to}${PRIMARY_TAG#"$from"}"
+          image_tags=$(jq -c --arg r "$region" --arg i "$target_primary" '. + {($r): $i}' <<< "$image_tags")
+          [[ "$region" == "$PRIMARY_REGION" ]] && continue
+
+          while IFS= read -r img; do
+            [[ -z "$img" ]] && continue
+            target_img="${to}${img#"$from"}"
+            docker tag "$img" "$target_img"
+            docker push "$target_img"
+          done <<< "${PRIMARY_TAG}"$'\n'"${EXTRA_TAGS}"
+        done < <(jq -r '.[]' <<< "$REGIONS")
+
+        echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"

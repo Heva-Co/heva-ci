@@ -16,7 +16,10 @@ inputs:
     required: false
     default: ""
   region:
-    description: GCP region used for Artifact Registry (e.g. us-central1)
+    description: >-
+      GCP region used for Artifact Registry (e.g. us-central1). May list
+      several, space- or comma-separated (e.g. "us-central1 us-east1"),
+      to configure Docker for each region's registry.
     required: false
     default: us-central1
   configure_docker:
@@ -46,4 +49,11 @@ runs:
     - name: Configure Docker for Artifact Registry
       if: inputs.configure_docker == 'true'
       shell: bash
-      run: gcloud auth configure-docker "${{ inputs.region }}-docker.pkg.dev" --quiet
+      env:
+        REGIONS: ${{ inputs.region }}
+      run: |
+        hosts=""
+        for region in ${REGIONS//,/ }; do
+          hosts+="${region}-docker.pkg.dev,"
+        done
+        gcloud auth configure-docker "${hosts%,}" --quiet
